@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -e
+
+DNS_ENV=${DNS_ENV:-/etc/cloudflare/default}
+
+[[ -f $DNS_ENV ]] && . $DNS_ENV
+
+CLOUDFLARE_API=${CLOUDFLARE_API:-https://www.cloudflare.com/api_json.html}
+
+function extract_domain() {
+  jq -r ".response.recs.objs[] | select(.name == \"$1\" and .type == \"A\")"
+}
+
+function cloudflare() {
+  curl -s $CLOUDFLARE_API -d "a=$1" -d "tkn=$TOKEN" -d "email=$EMAIL" -d "z=$ZONE" "${@:2}"
+}
+
+record=$(cloudflare rec_load_all | extract_domain $DOMAIN)
+dns_ip=$(echo $record | jq -r '.content')
+rec_id=$(echo $record | jq -r '.rec_id')
+global_ip=$(curl -s https://api.ipify.org)
+
+if [ $dns_ip != $global_ip ]; then
+  res=$(cloudflare rec_edit -d "id=$rec_id" -d 'type=A' -d "name=$DOMAIN" -d "content=$global_ip" -d 'ttl=1')
+  echo $res
+fi
